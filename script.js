@@ -74,7 +74,7 @@ function checkDuesNotifications() {
         const adDiscount = parseFloat(st.adWallet) || 0;
         const overallDues = st.totalFee - actualPaid - adDiscount;
         
-        if (overallDues > 0 && st.date) {
+        if (overallDues > 0 && st.date && (st.status || 'Active') === 'Active') {
             const admissionDate = new Date(st.date);
             
             let monthsPassed = (today.getFullYear() - admissionDate.getFullYear()) * 12 + (today.getMonth() - admissionDate.getMonth());
@@ -232,6 +232,7 @@ async function handleLogin(e) {
         });
         appData.students.forEach(st => {
             if(!st.id) st.id = 'STU' + Math.floor(Math.random() * 90000 + 10000);
+            if(!st.status) st.status = 'Active'; // Guarantee status property
         });
 
         localStorage.setItem('excellentERP_Database', JSON.stringify(appData));
@@ -761,7 +762,7 @@ function getDynamicPaidFee(student) {
 
 function addStudent(name, course, totalFee, paidNow, phone, dateStr, feeType, gender, imageBase64, durationStr) {
     const id = 'STU' + Math.floor(Math.random() * 90000 + 10000);
-    appData.students.unshift({ id: id, name: name, course: course, totalFee: parseFloat(totalFee), paidFee: parseFloat(paidNow), feeType: feeType, gender: gender, phone: phone, date: dateStr, image: imageBase64, duration: parseInt(durationStr) || 0, adWallet: 0 });
+    appData.students.unshift({ id: id, name: name, course: course, totalFee: parseFloat(totalFee), paidFee: parseFloat(paidNow), feeType: feeType, gender: gender, phone: phone, date: dateStr, image: imageBase64, duration: parseInt(durationStr) || 0, adWallet: 0, status: 'Active' });
     recordTransaction("income", `Admission Fee - ${name} [${id}]`, parseFloat(paidNow), dateStr);
     renderStudentList(); saveDatabase(); return id;
 }
@@ -803,6 +804,7 @@ function renderStudentList() {
     const searchQ = document.getElementById('filter-search') ? document.getElementById('filter-search').value.toLowerCase() : '';
     const dueF = document.getElementById('filter-due') ? document.getElementById('filter-due').value : 'all';
     const courseF = document.getElementById('filter-course') ? document.getElementById('filter-course').value : 'all';
+    const statusF = document.getElementById('filter-status') ? document.getElementById('filter-status').value : 'Active';
 
     listEl.innerHTML = '';
     if(appData.students.length === 0) {
@@ -826,7 +828,11 @@ function renderStudentList() {
         const matchSearch = st.name.toLowerCase().includes(searchQ) || st.id.toLowerCase().includes(searchQ);
         const matchDue = dueF === 'all' || (dueF === 'pending' && dues > 0) || (dueF === 'cleared' && dues <= 0);
         const matchCourse = courseF === 'all' || st.course === courseF;
-        return matchSearch && matchDue && matchCourse;
+        
+        const stStatus = st.status || 'Active';
+        const matchStatus = statusF === 'all' || stStatus === statusF;
+        
+        return matchSearch && matchDue && matchCourse && matchStatus;
     });
 
     if(filteredStudents.length === 0) {
@@ -912,6 +918,16 @@ function selectStudent(id) {
     document.getElementById('active-student-paidfee').innerText = `₹${actualPaid}`;
     document.getElementById('active-student-adwallet').innerText = `₹${adDiscount.toFixed(2)}`;
 
+    // Show/Hide Graduated Badge
+    const badgeEl = document.getElementById('active-student-badge');
+    if(badgeEl) {
+        if (student.status === 'Graduated') {
+            badgeEl.classList.remove('hidden');
+        } else {
+            badgeEl.classList.add('hidden');
+        }
+    }
+
     const dues = student.totalFee - actualPaid - adDiscount;
     const dueEl = document.getElementById('active-student-dues');
     dueEl.innerText = `₹${dues.toFixed(2)}`;
@@ -978,14 +994,22 @@ function openEditModal() {
     const student = appData.students.find(s => s.id === stId);
     if(!student) return;
 
-    document.getElementById('edit-student-id').value = student.id; document.getElementById('edit-name').value = student.name;
+    document.getElementById('edit-student-id').value = student.id; 
+    document.getElementById('edit-name').value = student.name;
     document.getElementById('edit-date').value = student.date || new Date().toISOString().split('T')[0];
-    document.getElementById('edit-phone').value = student.phone || ''; document.getElementById('edit-gender').value = student.gender || 'Male';
-    document.getElementById('edit-course').value = student.course; document.getElementById('edit-feetype').value = student.feeType || 'Monthly';
+    document.getElementById('edit-phone').value = student.phone || ''; 
+    document.getElementById('edit-gender').value = student.gender || 'Male';
+    document.getElementById('edit-course').value = student.course; 
+    document.getElementById('edit-feetype').value = student.feeType || 'Monthly';
     document.getElementById('edit-totalfee').value = student.totalFee; 
     document.getElementById('edit-paidfee').value = getDynamicPaidFee(student);
     document.getElementById('edit-adwallet').value = student.adWallet || 0;
     document.getElementById('edit-duration').value = student.duration || 0;
+    
+    const statusSelect = document.getElementById('edit-status');
+    if (statusSelect) {
+        statusSelect.value = student.status || 'Active';
+    }
 
     const modal = document.getElementById('edit-student-modal'); const content = document.getElementById('edit-modal-content');
     modal.classList.remove('hidden');
@@ -1007,12 +1031,20 @@ function submitEditStudent(e) {
 
     const oldName = student.name;
     const newName = document.getElementById('edit-name').value;
-    student.name = newName; student.date = document.getElementById('edit-date').value;
-    student.phone = document.getElementById('edit-phone').value; student.gender = document.getElementById('edit-gender').value;
-    student.course = document.getElementById('edit-course').value; student.feeType = document.getElementById('edit-feetype').value;
+    student.name = newName; 
+    student.date = document.getElementById('edit-date').value;
+    student.phone = document.getElementById('edit-phone').value; 
+    student.gender = document.getElementById('edit-gender').value;
+    student.course = document.getElementById('edit-course').value; 
+    student.feeType = document.getElementById('edit-feetype').value;
     student.totalFee = parseFloat(document.getElementById('edit-totalfee').value);
     student.duration = parseInt(document.getElementById('edit-duration').value) || 0;
     student.adWallet = parseFloat(document.getElementById('edit-adwallet').value) || 0;
+    
+    const statusSelect = document.getElementById('edit-status');
+    if (statusSelect) {
+        student.status = statusSelect.value;
+    }
     
     if (oldName !== newName) {
         appData.transactions.forEach(tx => {

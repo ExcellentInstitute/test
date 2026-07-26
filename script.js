@@ -1241,6 +1241,34 @@ function compressDocumentImage(file, callback) {
     reader.readAsDataURL(file);
 }
 
+// Structurally optimizes PDFs using PDF-Lib
+async function compressPDF(file, callback) {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        // Load the PDF into memory
+        const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+        
+        // Re-save with object streams enabled (compresses the internal structure of the PDF)
+        const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+        
+        const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+        let finalFile = new File([compressedBlob], file.name, {
+            type: 'application/pdf',
+            lastModified: Date.now(),
+        });
+        
+        // If structural compression somehow made it larger, fallback to the original
+        if(finalFile.size >= file.size) {
+            finalFile = file;
+        }
+        
+        callback(finalFile);
+    } catch (error) {
+        console.error("PDF Optimization failed:", error);
+        callback(file); // Fallback to original if library fails
+    }
+}
+
 function handleStudentFileUpload(event) {
     const originalFile = event.target.files[0];
     if (!originalFile) return;
@@ -1288,11 +1316,12 @@ function handleStudentFileUpload(event) {
         );
     };
 
-    // Automatically compress JPG/PNGs. Send PDFs natively.
+    // Compress images or PDFs based on file type
     if (originalFile.type.startsWith('image/')) {
         compressDocumentImage(originalFile, uploadToFirebase);
+    } else if (originalFile.type === 'application/pdf') {
+        compressPDF(originalFile, uploadToFirebase);
     } else {
-        // Native browser JS cannot compress complex PDFs without massive libraries. Uploads natively.
         uploadToFirebase(originalFile);
     }
 }

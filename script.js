@@ -17,6 +17,7 @@ let assumptionsData = [];
 let assumptionMode = false;
 let analyticsChart = null;
 let pendingQRCodeBase64 = null;
+let isBalanceHidden = false; // Toggle state for Dashboard Privacy
 
 window.onload = function() {
     setDefaultDates();
@@ -292,8 +293,24 @@ function saveDatabase() {
     .catch(error => console.log("Cloud sync connection failed.", error));
 }
 
+// DASHBOARD PRIVACY TOGGLE FUNCTION
+function toggleBalanceVisibility() {
+    isBalanceHidden = !isBalanceHidden;
+    const btn = document.getElementById('toggle-balance-btn');
+    if (isBalanceHidden) {
+        btn.innerHTML = '<i class="fa-solid fa-eye mr-2"></i> Show Values';
+        btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+    } else {
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i> Hide Values';
+        btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+    }
+    updateDashboard();
+}
+
 function updateDashboard() {
-    const format = (num) => `₹${num.toLocaleString('en-IN')}`;
+    // Respects the privacy toggle state
+    const format = (num) => isBalanceHidden ? '₹ ••••••' : `₹${num.toLocaleString('en-IN')}`;
+    
     document.getElementById('dash-income').innerText = format(appData.stats.income);
     document.getElementById('dash-expense').innerText = format(appData.stats.expense);
     document.getElementById('dash-balance').innerText = format(appData.stats.balance);
@@ -1155,47 +1172,90 @@ async function executeDelete() {
 }
 
 // =========================================
-// STUDENT DOCUMENT VAULT LOGIC (FIREBASE)
+// STUDENT DOCUMENT VAULT LOGIC (FIREBASE & COMPRESSION)
 // =========================================
 
+// Compresses document images heavily before upload. Leaves PDFs native.
+function compressDocumentImage(file, callback) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas'); 
+            const ctx = canvas.getContext('2d');
+            const MAX_SIZE = 800; // Optimal size for reading document text
+            let width = img.width, height = img.height;
+            
+            if (width > height) { 
+                if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } 
+            } else { 
+                if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } 
+            }
+            
+            canvas.width = width; 
+            canvas.height = height; 
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert back to a file object for Firebase
+            canvas.toBlob((blob) => {
+                const compressedFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
+                callback(compressedFile);
+            }, 'image/jpeg', 0.7); // 0.7 quality compresses heavily while retaining text readability
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
 function handleStudentFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const originalFile = event.target.files[0];
+    if (!originalFile) return;
     
     const stId = document.getElementById('tuition-student-id').value;
     if (!stId) return;
 
-    const storageRef = firebase.storage().ref();
-    const filePath = `student_docs/${stId}/${Date.now()}_${file.name}`;
-    const fileRef = storageRef.child(filePath);
+    const uploadToFirebase = (fileToUpload) => {
+        const storageRef = firebase.storage().ref();
+        const filePath = `student_docs/${stId}/${Date.now()}_${fileToUpload.name}`;
+        const fileRef = storageRef.child(filePath);
 
-    const progressBar = document.getElementById('upload-progress-bar');
-    const progressContainer = document.getElementById('upload-progress-container');
-    progressContainer.classList.remove('hidden');
-    progressBar.style.width = '0%';
+        const progressBar = document.getElementById('upload-progress-bar');
+        const progressContainer = document.getElementById('upload-progress-container');
+        progressContainer.classList.remove('hidden');
+        progressBar.style.width = '0%';
 
-    const uploadTask = fileRef.put(file);
+        const uploadTask = fileRef.put(fileToUpload);
 
-    uploadTask.on('state_changed', 
-        (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            progressBar.style.width = progress + '%';
-        }, 
-        (error) => {
-            console.error("Upload failed:", error);
-            alert("File upload to Vault failed!");
-            progressContainer.classList.add('hidden');
-            document.getElementById('student-doc-upload').value = '';
-        }, 
-        () => {
-            uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
+        uploadTask.on('state_changed', 
+            (snapshot) => {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                progressBar.style.width = progress + '%';
+            }, 
+            (error) => {
+                console.error("Upload failed:", error);
+                // Shows the precise Firebase Error code so you know exactly what is blocking it
+                alert("File upload to Vault failed!\n\nFirebase Error: " + error.code + "\nMessage: " + error.message + "\n\nTip: Go to Firebase Console -> Storage -> Rules, and set to 'allow read, write: if true;' for testing.");
                 progressContainer.classList.add('hidden');
-                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                saveFileToDatabase(file.name, "Student Certificate", stId, downloadURL, filePath, sizeMB);
                 document.getElementById('student-doc-upload').value = '';
-            });
-        }
-    );
+            }, 
+            () => {
+                uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
+                    progressContainer.classList.add('hidden');
+                    const sizeMB = (fileToUpload.size / (1024 * 1024)).toFixed(2);
+                    saveFileToDatabase(fileToUpload.name, "Student Certificate", stId, downloadURL, filePath, sizeMB);
+                    document.getElementById('student-doc-upload').value = '';
+                });
+            }
+        );
+    };
+
+    // Automatically compress JPG/PNGs. Send PDFs natively.
+    if (originalFile.type.startsWith('image/')) {
+        compressDocumentImage(originalFile, uploadToFirebase);
+    } else {
+        // Native browser JS cannot compress complex PDFs without massive libraries. Uploads natively.
+        uploadToFirebase(originalFile);
+    }
 }
 
 function saveFileToDatabase(name, category, target, url, path, size) {

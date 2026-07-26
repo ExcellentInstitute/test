@@ -17,7 +17,7 @@ let assumptionsData = [];
 let assumptionMode = false;
 let analyticsChart = null;
 let pendingQRCodeBase64 = null;
-let isBalanceHidden = false; // Toggle state for Dashboard Privacy
+let isBalanceHidden = true; // Toggle state for Dashboard Privacy (Hidden by default)
 
 window.onload = function() {
     setDefaultDates();
@@ -300,10 +300,12 @@ function toggleBalanceVisibility() {
     const btn = document.getElementById('toggle-balance-btn');
     if (isBalanceHidden) {
         btn.innerHTML = '<i class="fa-solid fa-eye mr-2"></i> Show Values';
-        btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+        btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+        btn.classList.add('bg-slate-100', 'text-slate-700', 'border-slate-200');
     } else {
         btn.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i> Hide Values';
-        btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+        btn.classList.remove('bg-slate-100', 'text-slate-700', 'border-slate-200');
+        btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
     }
     updateDashboard();
 }
@@ -1248,7 +1250,12 @@ function handleStudentFileUpload(event) {
 
     const uploadToFirebase = (fileToUpload) => {
         const storageRef = firebase.storage().ref();
-        const filePath = `student_docs/${stId}/${Date.now()}_${fileToUpload.name}`;
+        
+        // CHANGED PATH to match your strict Firebase rule: match /vault/{fileName}
+        // Safely strip special characters from file name just in case
+        const safeName = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const filePath = `vault/${stId}_${Date.now()}_${safeName}`;
+        
         const fileRef = storageRef.child(filePath);
 
         const progressBar = document.getElementById('upload-progress-bar');

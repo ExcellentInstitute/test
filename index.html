@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css"/>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
     
     <!-- Firebase SDKs for Storage Vault -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -156,7 +157,7 @@
                             <div class="relative z-10">
                                 <div class="flex items-center justify-between mb-6"><div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-xl shadow-inner"><i class="fa-solid fa-arrow-trend-up"></i></div><span class="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-emerald-100">Total In</span></div>
                                 <h3 class="text-sm font-bold text-slate-500 mb-1">Total Revenue</h3>
-                                <h2 class="text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-2 dashboard-value" id="dash-income">₹0</h2>
+                                <h2 class="text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-2 dashboard-value" id="dash-income">₹ ••••••</h2>
                                 <p class="text-xs text-slate-400 font-medium">+ Tuitions, Exams, Jobs & Print</p>
                             </div>
                         </div>
@@ -165,7 +166,7 @@
                             <div class="relative z-10">
                                 <div class="flex items-center justify-between mb-6"><div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center text-xl shadow-inner"><i class="fa-solid fa-arrow-trend-down"></i></div><span class="px-3 py-1 bg-rose-50 text-rose-600 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-rose-100">Total Out</span></div>
                                 <h3 class="text-sm font-bold text-slate-500 mb-1">Total Expenditures</h3>
-                                <h2 class="text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-2 dashboard-value" id="dash-expense">₹0</h2>
+                                <h2 class="text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-2 dashboard-value" id="dash-expense">₹ ••••••</h2>
                                 <p class="text-xs text-slate-400 font-medium">- Bills, Salaries & Purchases</p>
                             </div>
                         </div>
@@ -175,7 +176,7 @@
                             <div class="relative z-10">
                                 <div class="flex items-center justify-between mb-6"><div class="w-12 h-12 bg-white/10 text-white backdrop-blur-md rounded-2xl flex items-center justify-center text-xl shadow-inner border border-white/10"><i class="fa-solid fa-scale-balanced"></i></div><span class="px-3 py-1 bg-indigo-500/30 text-indigo-200 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-indigo-400/30">Net Cash</span></div>
                                 <h3 class="text-sm font-bold text-indigo-200 mb-1">Available Balance</h3>
-                                <h2 class="text-4xl md:text-5xl font-black text-white tracking-tight mb-2 dashboard-value" id="dash-balance">₹0</h2>
+                                <h2 class="text-4xl md:text-5xl font-black text-white tracking-tight mb-2 dashboard-value" id="dash-balance">₹ ••••••</h2>
                                 <p class="text-xs text-indigo-300 font-medium">Income minus Expenses</p>
                             </div>
                         </div>
@@ -449,8 +450,8 @@
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6 flex-1 overflow-visible">
-                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md h-[400px]">
+                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 flex-1 overflow-visible">
+                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md min-h-[400px]">
                                         <div class="p-4 border-b border-slate-100 bg-slate-50 shrink-0"><h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-plus-circle mr-2 text-emerald-500"></i> Record New Payment</h3></div>
                                         <form onsubmit="submitTuitionFee(event)" class="p-6 flex-1 flex flex-col justify-between overflow-y-auto custom-scrollbar">
                                             <input type="hidden" id="tuition-student-id">
@@ -472,7 +473,7 @@
                                         </form>
                                     </div>
 
-                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md h-[400px]">
+                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md min-h-[400px]">
                                         <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0"><h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-clock-rotate-left mr-2 text-indigo-500"></i> Payment History</h3></div>
                                         <div class="overflow-y-auto overflow-x-auto flex-1 custom-scrollbar p-2">
                                             <table class="w-full text-left border-collapse min-w-[250px]">
@@ -482,7 +483,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md h-[400px]">
+                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md min-h-[400px]">
                                         <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
                                             <h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-folder-open mr-2 text-indigo-500"></i> Documents</h3>
                                             <label class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-indigo-200">

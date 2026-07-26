@@ -16,6 +16,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css"/>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     
+    <!-- Firebase SDKs for Storage Vault -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -393,7 +397,7 @@
                                 <p class="text-slate-400 font-medium">Their full financial history and profile will appear here.</p>
                             </div>
 
-                            <div id="tuition-active" class="hidden h-full flex flex-col gap-6">
+                            <div id="tuition-active" class="hidden h-full flex flex-col gap-6 overflow-y-auto pb-10">
                                 
                                 <div class="premium-card overflow-hidden shrink-0 shadow-lg border-slate-200">
                                     <div class="p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:justify-between sm:items-center bg-slate-900 text-white gap-6 relative overflow-hidden">
@@ -426,7 +430,7 @@
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 flex-1 overflow-hidden min-h-[350px]">
+                                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 flex-1 overflow-hidden min-h-[350px]">
                                     <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md">
                                         <div class="p-4 border-b border-slate-100 bg-slate-50 shrink-0"><h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-plus-circle mr-2 text-emerald-500"></i> Record New Payment</h3></div>
                                         <form onsubmit="submitTuitionFee(event)" class="p-6 flex-1 flex flex-col justify-between overflow-y-auto custom-scrollbar">
@@ -452,9 +456,28 @@
                                     <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md">
                                         <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0"><h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-clock-rotate-left mr-2 text-indigo-500"></i> Payment History</h3></div>
                                         <div class="overflow-y-auto flex-1 custom-scrollbar p-2">
-                                            <table class="w-full text-left border-collapse min-w-[300px]">
+                                            <table class="w-full text-left border-collapse min-w-[250px]">
                                                 <thead><tr class="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100"><th class="py-2 px-3">Date</th><th class="py-2 px-3">Description</th><th class="py-2 px-3 text-right">Amount</th><th class="py-2 px-2 text-center"></th></tr></thead>
                                                 <tbody id="student-mini-ledger" class="text-xs divide-y divide-slate-50 font-medium"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div class="premium-card flex flex-col bg-white overflow-hidden shadow-md">
+                                        <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+                                            <h3 class="font-bold text-slate-700 text-sm"><i class="fa-solid fa-folder-open mr-2 text-indigo-500"></i> Documents</h3>
+                                            <label class="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-indigo-200">
+                                                <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Upload
+                                                <input type="file" id="student-doc-upload" class="hidden" accept=".pdf,.jpg,.jpeg,.png" onchange="handleStudentFileUpload(event)">
+                                            </label>
+                                        </div>
+                                        <div id="upload-progress-container" class="hidden w-full bg-slate-100 h-1.5 shrink-0">
+                                            <div id="upload-progress-bar" class="bg-indigo-500 h-1.5 w-0 transition-all duration-300"></div>
+                                        </div>
+                                        <div class="overflow-y-auto flex-1 custom-scrollbar p-2">
+                                            <table class="w-full text-left border-collapse min-w-[250px]">
+                                                <thead><tr class="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100"><th class="py-2 px-3">Date</th><th class="py-2 px-3">File Name</th><th class="py-2 px-2 text-center"></th></tr></thead>
+                                                <tbody id="student-files-list" class="text-xs divide-y divide-slate-50 font-medium"></tbody>
                                             </table>
                                         </div>
                                     </div>

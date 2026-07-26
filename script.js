@@ -1,6 +1,14 @@
 const GOOGLE_APP_URL = "https://script.google.com/macros/s/AKfycbxFsBuyiWOdTMMGeOgTXhvSmAfUK_uMbdwVO945ejPvnsEOQtX9ZtMCh9RQtBWzHSVj/exec";
 
-let appData = { students: [], transactions: [], stats: { income: 0, expense: 0, balance: 0 } };
+// Initialize Firebase Storage for the Document Vault
+const firebaseConfig = {
+    storageBucket: "excellent-institute-vault.firebasestorage.app"
+};
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+let appData = { students: [], transactions: [], stats: { income: 0, expense: 0, balance: 0 }, files: [] };
 let sessionPassword = ""; 
 let cropper = null;
 let currentCropTarget = null;
@@ -894,6 +902,7 @@ function selectStudent(id) {
     if(dues <= 0) dueEl.innerText = "Cleared";
 
     renderMiniLedger(student);
+    renderStudentFiles(student.id);
     if(window.innerWidth < 1024) document.getElementById('tuition-active').scrollIntoView({behavior: 'smooth'});
 }
 
@@ -1143,4 +1152,156 @@ async function executeDelete() {
         }
         recalculateStats(); saveDatabase(); refreshAllUI(); closeDeleteModal(); btnText.innerHTML = 'Confirm Delete';
     }, 300);
+}
+
+// =========================================
+// STUDENT DOCUMENT VAULT LOGIC (FIREBASE)
+// =========================================
+
+function handleStudentFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const stId = document.getElementById('tuition-student-id').value;
+    if (!stId) return;
+
+    const storageRef = firebase.storage().ref();
+    const filePath = `student_docs/${stId}/${Date.now()}_${file.name}`;
+    const fileRef = storageRef.child(filePath);
+
+    const progressBar = document.getElementById('upload-progress-bar');
+    const progressContainer = document.getElementById('upload-progress-container');
+    progressContainer.classList.remove('hidden');
+    progressBar.style.width = '0%';
+
+    const uploadTask = fileRef.put(file);
+
+    uploadTask.on('state_changed', 
+        (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            progressBar.style.width = progress + '%';
+        }, 
+        (error) => {
+            console.error("Upload failed:", error);
+            alert("File upload to Vault failed!");
+            progressContainer.classList.add('hidden');
+            document.getElementById('student-doc-upload').value = '';
+        }, 
+        () => {
+            uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
+                progressContainer.classList.add('hidden');
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                saveFileToDatabase(file.name, "Student Certificate", stId, downloadURL, filePath, sizeMB);
+                document.getElementById('student-doc-upload').value = '';
+            });
+        }
+    );
+}
+
+function saveFileToDatabase(name, category, target, url, path, size) {
+    const payload = { 
+        action: 'add_file', 
+        pass: sessionPassword, 
+        name: name, 
+        category: category, 
+        target: target, 
+        url: url, 
+        path: path, 
+        size: size, 
+        folder: "Student Vault" 
+    };
+    
+    fetch(GOOGLE_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(result => {
+        if(result.success) {
+            if (!appData.files) appData.files = [];
+            appData.files.push({
+                id: "FL" + Date.now(),
+                name: name,
+                category: category,
+                target: target,
+                url: url,
+                path: path,
+                size: size,
+                date: new Date().toISOString().split('T')[0],
+                folder: "Student Vault"
+            });
+            renderStudentFiles(target);
+            alert("Document successfully saved to Student Vault!");
+        } else {
+            alert("Error saving file record to database: " + result.error);
+        }
+    })
+    .catch(error => {
+        console.error("Database save failed:", error);
+        alert("Database connection failed while saving file record.");
+    });
+}
+
+function renderStudentFiles(stId) {
+    const listEl = document.getElementById('student-files-list');
+    if(!listEl) return;
+    listEl.innerHTML = '';
+    
+    if (!appData.files) appData.files = [];
+    const stFiles = appData.files.filter(f => f.target === stId);
+    
+    if (stFiles.length === 0) {
+        listEl.innerHTML = '<tr><td colspan="3" class="text-center py-6 text-xs text-slate-400 font-bold"><i class="fa-solid fa-folder-open text-2xl mb-2 text-slate-300 block"></i>No documents stored yet.</td></tr>';
+        return;
+    }
+    
+    stFiles.forEach(f => {
+        listEl.innerHTML += `
+            <tr class="hover:bg-slate-100 transition-colors border-b border-slate-100">
+                <td class="py-3 px-3 text-slate-500 font-bold text-[10px]">${f.date}</td>
+                <td class="py-3 px-3 text-slate-800 font-bold max-w-[150px] truncate" title="${f.name}">
+                    <a href="${f.url}" target="_blank" class="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"><i class="fa-solid fa-file-pdf text-rose-500 mr-1.5"></i>${f.name}</a>
+                </td>
+                <td class="py-3 px-2 text-center">
+                    <button type="button" onclick="deleteStudentFile('${f.path}', '${f.id}')" class="text-rose-300 hover:text-rose-600 transition-colors p-1" title="Delete Document"><i class="fa-solid fa-trash"></i></button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function deleteStudentFile(path, fileId) {
+    if(!confirm("Are you sure you want to permanently delete this document?")) return;
+    
+    const storageRef = firebase.storage().ref();
+    const fileRef = storageRef.child(path);
+    
+    fileRef.delete().then(() => {
+        const payload = { action: 'delete_file', pass: sessionPassword, id: fileId, path: path };
+        fetch(GOOGLE_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: { "Content-Type": "text/plain;charset=utf-8" }
+        })
+        .then(res => res.json())
+        .then(result => {
+            if(result.success) {
+                appData.files = appData.files.filter(f => f.id !== fileId);
+                const stId = document.getElementById('tuition-student-id').value;
+                renderStudentFiles(stId);
+                alert("Document deleted.");
+            }
+        });
+    }).catch((error) => {
+        console.error("Firebase deletion failed:", error);
+        const payload = { action: 'delete_file', pass: sessionPassword, id: fileId, path: path };
+        fetch(GOOGLE_APP_URL, { method: 'POST', body: JSON.stringify(payload), headers: { "Content-Type": "text/plain;charset=utf-8" }})
+        .then(res => res.json())
+        .then(result => {
+            appData.files = appData.files.filter(f => f.id !== fileId);
+            const stId = document.getElementById('tuition-student-id').value;
+            renderStudentFiles(stId);
+        });
+    });
 }

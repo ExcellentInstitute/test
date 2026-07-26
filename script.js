@@ -8,22 +8,11 @@ let croppedImages = { reg: null, edit: null };
 let assumptionsData = [];
 let assumptionMode = false;
 let analyticsChart = null;
+let pendingQRCodeBase64 = null;
 
 window.onload = function() {
     setDefaultDates();
 };
-
-function getDynamicPaidFee(student) {
-    let total = 0;
-    appData.transactions.forEach(tx => {
-        if (tx.type === 'income' && !tx.title.includes('Job Desk:') && !tx.title.includes('Print Desk:')) {
-            if (tx.title.includes(`[${student.id}]`) || (tx.title.includes(student.name) && !tx.title.includes('[STU'))) {
-                total += parseFloat(tx.amount) || 0;
-            }
-        }
-    });
-    return Math.max(total, parseFloat(student.paidFee) || 0);
-}
 
 function shareTransactionWA(txId) {
     const tx = appData.transactions.find(t => t.id === txId);
@@ -45,8 +34,9 @@ function shareStudentWA() {
     const student = appData.students.find(s => s.id === stId);
     if(!student) return;
     const actualPaid = getDynamicPaidFee(student);
-    const dues = student.totalFee - actualPaid;
-    const msg = `🎓 *STUDENT UPDATE*%0A*Name:* ${student.name}%0A*Course:* ${student.course}%0A*Duration:* ${student.duration || '?'} Months%0A*Total Fee:* ₹${student.totalFee}%0A*Total Paid:* ₹${actualPaid}%0A*Due:* ₹${dues}%0A*Status:* ${dues <= 0 ? 'Cleared ✅' : 'Pending ⚠️'}`;
+    const adDiscount = parseFloat(student.adWallet) || 0;
+    const dues = student.totalFee - actualPaid - adDiscount;
+    const msg = `🎓 *STUDENT UPDATE*%0A*Name:* ${student.name}%0A*Course:* ${student.course}%0A*Duration:* ${student.duration || '?'} Months%0A*Total Fee:* ₹${student.totalFee}%0A*Total Paid:* ₹${actualPaid}%0A*Ad Discount:* ₹${adDiscount.toFixed(2)}%0A*Due:* ₹${dues.toFixed(2)}%0A*Status:* ${dues <= 0 ? 'Cleared ✅' : 'Pending ⚠️'}`;
     
     const link = document.createElement('a');
     link.href = `https://api.whatsapp.com/send?text=${msg}`;
@@ -72,7 +62,8 @@ function checkDuesNotifications() {
     
     appData.students.forEach(st => {
         const actualPaid = getDynamicPaidFee(st);
-        const overallDues = st.totalFee - actualPaid;
+        const adDiscount = parseFloat(st.adWallet) || 0;
+        const overallDues = st.totalFee - actualPaid - adDiscount;
         
         if (overallDues > 0 && st.date) {
             const admissionDate = new Date(st.date);
@@ -86,7 +77,7 @@ function checkDuesNotifications() {
                 expectedAmount = st.totalFee;
             }
             
-            const currentMonthDue = expectedAmount - actualPaid;
+            const currentMonthDue = expectedAmount - actualPaid - adDiscount;
             
             if (currentMonthDue > 0) {
                 dueStudents.push({ 
@@ -111,7 +102,7 @@ function checkDuesNotifications() {
             list.innerHTML += `
                 <div class="p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer rounded-xl" onclick="closeNotificationsIfOpen(); switchTab('tuition'); setTimeout(()=>selectStudent('${st.id}'), 100);">
                     <p class="text-sm font-bold text-slate-800">${st.name}</p>
-                    <p class="text-xs text-rose-500 font-bold mt-1">₹${st.currentDue} Due for Current Month</p>
+                    <p class="text-xs text-rose-500 font-bold mt-1">₹${st.currentDue.toFixed(2)} Due for Current Month</p>
                 </div>
             `;
         });
@@ -303,7 +294,7 @@ function updateDashboard() {
 
 function refreshAllUI() {
     updateDashboard(); renderStudentList(); renderLedger(); renderExpenseList(); renderJobList(); renderPrintList();
-    renderAnalytics(); checkDuesNotifications();
+    renderAnalytics(); checkDuesNotifications(); populateSettings();
     const activeId = document.getElementById('tuition-student-id').value;
     if(activeId && !document.getElementById('tuition-active').classList.contains('hidden')) {
         selectStudent(activeId);
@@ -342,13 +333,73 @@ function switchTab(tabId) {
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(`view-${tabId}`).classList.add('active');
     document.getElementById(`nav-${tabId}`).classList.add('active');
-    const titles = { 'dashboard': 'System Dashboard', 'registration': 'New Admission', 'tuition': 'Student Database', 'job': 'Job Applications', 'print': 'Print & Copy Desk', 'expenditure': 'Expenditures', 'analytics': 'Profit & Loss Analytics' };
+    const titles = { 'dashboard': 'System Dashboard', 'registration': 'New Admission', 'tuition': 'Student Database', 'job': 'Job Applications', 'print': 'Print & Copy Desk', 'expenditure': 'Expenditures', 'analytics': 'Profit & Loss Analytics', 'settings': 'System Settings' };
     document.getElementById('page-title').innerText = titles[tabId];
     if(window.innerWidth < 768) {
         const sidebar = document.getElementById('sidebar');
         if(!sidebar.classList.contains('-translate-x-full')) toggleSidebar();
     }
     if(tabId === 'analytics') renderAnalytics();
+}
+
+function populateSettings() {
+    if (!appData.settings) return;
+    document.getElementById('set-upi').value = appData.settings.upiId || '';
+    document.getElementById('set-reward-amt').value = appData.settings.rewardPerClick || 0.25;
+    document.getElementById('set-allow-rewards').value = appData.settings.allowVideoRewards ? "true" : "false";
+    
+    const qrPreview = document.getElementById('set-qr-preview');
+    const qrIcon = document.getElementById('set-qr-icon');
+    if (appData.settings.qrCodeUrl && appData.settings.qrCodeUrl !== "") {
+        qrPreview.src = appData.settings.qrCodeUrl;
+        qrPreview.classList.remove('hidden');
+        qrIcon.classList.add('hidden');
+    } else {
+        qrPreview.src = '';
+        qrPreview.classList.add('hidden');
+        qrIcon.classList.remove('hidden');
+    }
+}
+
+function previewQRCode(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    compressImage(file, function(base64Image) {
+        pendingQRCodeBase64 = base64Image;
+        const qrPreview = document.getElementById('set-qr-preview');
+        const qrIcon = document.getElementById('set-qr-icon');
+        qrPreview.src = base64Image;
+        qrPreview.classList.remove('hidden');
+        qrIcon.classList.add('hidden');
+    });
+}
+
+function submitSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-settings');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+    
+    const upiId = document.getElementById('set-upi').value.trim();
+    const rewardAmt = document.getElementById('set-reward-amt').value;
+    const allowRewards = document.getElementById('set-allow-rewards').value === 'true';
+    
+    if (!appData.settings) appData.settings = {};
+    
+    appData.settings.upiId = upiId;
+    appData.settings.rewardPerClick = parseFloat(rewardAmt);
+    appData.settings.allowVideoRewards = allowRewards;
+    
+    if (pendingQRCodeBase64) {
+        appData.settings.qrCodeUrl = pendingQRCodeBase64;
+        pendingQRCodeBase64 = null;
+    }
+    
+    saveDatabase();
+    
+    setTimeout(() => {
+        btn.innerHTML = 'Save Configuration';
+        alert("Settings queued for synchronization! Apps Script will save this directly into your JSON payload.");
+    }, 1000);
 }
 
 function compressImage(file, callback) {
@@ -653,7 +704,7 @@ function renderAnalyticsTable(keys, grouped) {
 }
 
 function showFeeBreakdown() {
-    let admission = 0, tuition = 0, exam = 0, other = 0;
+    let admission = 0, tuition = 0, exam = 0, other = 0, totalAdDiscount = 0;
     appData.transactions.forEach(tx => {
         if(tx.type === 'income' && !tx.title.includes('Job Desk:') && !tx.title.includes('Print Desk:')) {
             const amt = parseFloat(tx.amount) || 0;
@@ -664,13 +715,28 @@ function showFeeBreakdown() {
             else admission += amt; 
         }
     });
+    appData.students.forEach(st => {
+        totalAdDiscount += parseFloat(st.adWallet) || 0;
+    });
     const total = admission + tuition + exam + other;
-    alert(`📊 TOTAL STUDENT FEES: ₹${total.toLocaleString('en-IN')}\n\n🎟️ Admission Fees: ₹${admission.toLocaleString('en-IN')}\n📖 Course Tuitions: ₹${tuition.toLocaleString('en-IN')}\n📝 Exam/Certificates: ₹${exam.toLocaleString('en-IN')}\n💡 Other Fees: ₹${other.toLocaleString('en-IN')}`);
+    alert(`📊 TOTAL STUDENT FEES: ₹${total.toLocaleString('en-IN')}\n\n🎟️ Admission Fees: ₹${admission.toLocaleString('en-IN')}\n📖 Course Tuitions: ₹${tuition.toLocaleString('en-IN')}\n📝 Exam/Certificates: ₹${exam.toLocaleString('en-IN')}\n💡 Other Fees: ₹${other.toLocaleString('en-IN')}\n🎁 Total Ad Discounts: ₹${totalAdDiscount.toFixed(2)}`);
+}
+
+function getDynamicPaidFee(student) {
+    let total = 0;
+    appData.transactions.forEach(tx => {
+        if (tx.type === 'income' && !tx.title.includes('Job Desk:') && !tx.title.includes('Print Desk:')) {
+            if (tx.title.includes(`[${student.id}]`) || (tx.title.includes(student.name) && !tx.title.includes('[STU'))) {
+                total += parseFloat(tx.amount) || 0;
+            }
+        }
+    });
+    return Math.max(total, parseFloat(student.paidFee) || 0);
 }
 
 function addStudent(name, course, totalFee, paidNow, phone, dateStr, feeType, gender, imageBase64, durationStr) {
     const id = 'STU' + Math.floor(Math.random() * 90000 + 10000);
-    appData.students.unshift({ id: id, name: name, course: course, totalFee: parseFloat(totalFee), paidFee: parseFloat(paidNow), feeType: feeType, gender: gender, phone: phone, date: dateStr, image: imageBase64, duration: parseInt(durationStr) || 0 });
+    appData.students.unshift({ id: id, name: name, course: course, totalFee: parseFloat(totalFee), paidFee: parseFloat(paidNow), feeType: feeType, gender: gender, phone: phone, date: dateStr, image: imageBase64, duration: parseInt(durationStr) || 0, adWallet: 0 });
     recordTransaction("income", `Admission Fee - ${name} [${id}]`, parseFloat(paidNow), dateStr);
     renderStudentList(); saveDatabase(); return id;
 }
@@ -729,7 +795,9 @@ function renderStudentList() {
 
     const filteredStudents = appData.students.filter(st => {
         const actualPaid = getDynamicPaidFee(st);
-        const dues = st.totalFee - actualPaid;
+        const adDiscount = parseFloat(st.adWallet) || 0;
+        const dues = st.totalFee - actualPaid - adDiscount;
+        
         const matchSearch = st.name.toLowerCase().includes(searchQ) || st.id.toLowerCase().includes(searchQ);
         const matchDue = dueF === 'all' || (dueF === 'pending' && dues > 0) || (dueF === 'cleared' && dues <= 0);
         const matchCourse = courseF === 'all' || st.course === courseF;
@@ -742,7 +810,8 @@ function renderStudentList() {
 
     filteredStudents.forEach(st => {
         const actualPaid = getDynamicPaidFee(st);
-        const dues = st.totalFee - actualPaid;
+        const adDiscount = parseFloat(st.adWallet) || 0;
+        const dues = st.totalFee - actualPaid - adDiscount;
         const avatar = st.image ? `<img src="${st.image}" class="w-full h-full object-cover">` : `<span class="font-bold text-lg">${st.name.charAt(0)}</span>`;
         const card = document.createElement('div');
         card.className = "flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl cursor-pointer hover:border-indigo-400 hover:shadow-lg transition-all group transform hover:-translate-y-1 shadow-sm";
@@ -752,7 +821,7 @@ function renderStudentList() {
                 <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors overflow-hidden shadow-inner shrink-0">${avatar}</div>
                 <div class="truncate"><p class="font-extrabold text-slate-800 text-sm truncate">${st.name}</p><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wide mt-0.5 truncate">${st.id} • ${st.course}</p></div>
             </div>
-            <div class="text-right shrink-0 ml-2"><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Due</p><p class="${dues > 0 ? 'text-rose-500' : 'text-emerald-500'} font-black text-sm drop-shadow-sm">₹${dues}</p></div>
+            <div class="text-right shrink-0 ml-2"><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Due</p><p class="${dues > 0 ? 'text-rose-500' : 'text-emerald-500'} font-black text-sm drop-shadow-sm">₹${dues.toFixed(2)}</p></div>
         `;
         listEl.appendChild(card);
     });
@@ -802,6 +871,7 @@ function selectStudent(id) {
     if(!student) return;
 
     const actualPaid = getDynamicPaidFee(student);
+    const adDiscount = parseFloat(student.adWallet) || 0;
 
     document.getElementById('tuition-placeholder').classList.add('hidden');
     document.getElementById('tuition-active').classList.remove('hidden');
@@ -815,10 +885,11 @@ function selectStudent(id) {
     document.getElementById('active-student-phone').innerText = student.phone || "-";
     document.getElementById('active-student-totalfee').innerText = `₹${student.totalFee}`;
     document.getElementById('active-student-paidfee').innerText = `₹${actualPaid}`;
+    document.getElementById('active-student-adwallet').innerText = `₹${adDiscount.toFixed(2)}`;
 
-    const dues = student.totalFee - actualPaid;
+    const dues = student.totalFee - actualPaid - adDiscount;
     const dueEl = document.getElementById('active-student-dues');
-    dueEl.innerText = `₹${dues}`;
+    dueEl.innerText = `₹${dues.toFixed(2)}`;
     dueEl.className = dues <= 0 ? "text-3xl md:text-4xl font-black text-emerald-400 drop-shadow-md" : "text-3xl md:text-4xl font-black text-rose-400 drop-shadow-md";
     if(dues <= 0) dueEl.innerText = "Cleared";
 
@@ -887,6 +958,7 @@ function openEditModal() {
     document.getElementById('edit-course').value = student.course; document.getElementById('edit-feetype').value = student.feeType || 'Monthly';
     document.getElementById('edit-totalfee').value = student.totalFee; 
     document.getElementById('edit-paidfee').value = getDynamicPaidFee(student);
+    document.getElementById('edit-adwallet').value = student.adWallet || 0;
     document.getElementById('edit-duration').value = student.duration || 0;
 
     const modal = document.getElementById('edit-student-modal'); const content = document.getElementById('edit-modal-content');
@@ -914,6 +986,7 @@ function submitEditStudent(e) {
     student.course = document.getElementById('edit-course').value; student.feeType = document.getElementById('edit-feetype').value;
     student.totalFee = parseFloat(document.getElementById('edit-totalfee').value);
     student.duration = parseInt(document.getElementById('edit-duration').value) || 0;
+    student.adWallet = parseFloat(document.getElementById('edit-adwallet').value) || 0;
     
     if (oldName !== newName) {
         appData.transactions.forEach(tx => {
